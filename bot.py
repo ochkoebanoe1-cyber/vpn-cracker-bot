@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from fake_useragent import UserAgent
 
 # ============ КОНФИГУРАЦИЯ ============
-BOT_TOKEN = os.getenv("8720885527:AAFAPOYXlaIjN-iaeIDQe8VN3fkiFpvZ3b8")
+BOT_TOKEN = os.getenv("8949871115:AAGOyNgLzNm3AZXSNbPWfsFoLJGjTxRYEUE")
 ADMIN_IDS = []
 admin_id_str = os.getenv("lassstik05")
 if admin_id_str:
